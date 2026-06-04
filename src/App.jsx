@@ -264,7 +264,7 @@ function StickerCard({ sticker, status, onToggle }) {
   const colors = {
     have: { bg: "#2A9D5C", label: "Have" },
     need: { bg: "#E63946", label: "Need" },
-    double: { bg: "#1D6FB8", label: "Double" },
+    double: { bg: "#1D6FB8", label: "Have ×2" },
     none: { bg: "#e2e8f0", label: "" },
   };
   const c = colors[status] || colors.none;
@@ -374,6 +374,21 @@ export default function StickerSwap() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  // ── Inject responsive nav CSS once ──
+  useEffect(() => {
+    if (document.getElementById("ss-responsive-css")) return;
+    const style = document.createElement("style");
+    style.id = "ss-responsive-css";
+    style.textContent = `
+      @media (max-width: 640px) {
+        .ss-nav { flex-direction: column !important; align-items: center !important; }
+        .ss-logo { justify-content: center !important; width: 100%; text-align: center; }
+        .ss-navlinks { justify-content: center !important; width: 100%; }
+      }
+    `;
+    document.head.appendChild(style);
+  }, []);
+
   // ── On load: restore session ──
   useEffect(() => {
     (async () => {
@@ -416,10 +431,11 @@ export default function StickerSwap() {
   }, [selectedTeam, searchQ]);
 
   const stats = useMemo(() => {
-    const have = Object.values(collection).filter(v => v === "have").length;
-    const need = Object.values(collection).filter(v => v === "need").length;
-    const dbl = Object.values(collection).filter(v => v === "double").length;
-    return { have, need, double: dbl, total: ALL_STICKERS.length };
+    const vals = Object.values(collection);
+    const dbl = vals.filter(v => v === "double").length;
+    const owned = vals.filter(v => v === "have" || v === "double").length; // a double is also owned
+    const need = vals.filter(v => v === "need").length;
+    return { have: owned, need, double: dbl, total: ALL_STICKERS.length };
   }, [collection]);
 
   const cycleStatus = async (id) => {
@@ -467,7 +483,7 @@ export default function StickerSwap() {
         setCollection({});
         setReviews(await db.getAllReviews());
         setTradeRequests([]);
-        showToast("Account created! Welcome to StickerSwap 🎉");
+        showToast("Account created! Welcome to StickerSwapHub 🎉");
         setPage("collection");
       } else {
         const authUser = await db.signIn(authForm);
@@ -593,10 +609,10 @@ export default function StickerSwap() {
   const TRI = { red: "#E63946", green: "#2A9D5C", blue: "#1D6FB8", gold: "#D4A017" };
   const S = {
     app: { minHeight: "100vh", background: "#f8fafc", color: "#0f172a", fontFamily: "'DM Sans', 'Segoe UI', sans-serif" },
-    nav: { background: "#ffffff", borderBottom: "1px solid #e2e8f0", padding: "0 24px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 60, position: "sticky", top: 0, zIndex: 100, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" },
+    nav: { background: "#ffffff", borderBottom: "1px solid #e2e8f0", padding: "8px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, rowGap: 6, flexWrap: "wrap", minHeight: 56, position: "sticky", top: 0, zIndex: 100, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" },
     logo: { fontFamily: "'Space Grotesk', sans-serif", fontWeight: 800, fontSize: 20, color: "#0f172a", cursor: "pointer", display: "flex", alignItems: "center", gap: 8 },
-    navLinks: { display: "flex", gap: 4, alignItems: "center" },
-    navBtn: (active) => ({ background: active ? "#f1f5f9" : "transparent", border: "none", color: active ? TRI.blue : "#64748b", padding: "6px 14px", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: 14 }),
+    navLinks: { display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", justifyContent: "center" },
+    navBtn: (active) => ({ background: active ? "#f1f5f9" : "transparent", border: "none", color: active ? TRI.blue : "#64748b", padding: "6px 12px", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: 14, whiteSpace: "nowrap" }),
     page: { maxWidth: 1200, margin: "0 auto", padding: "32px 20px" },
     card: { background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 16, padding: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" },
     btn: (variant = "primary") => ({
@@ -616,7 +632,7 @@ export default function StickerSwap() {
 
   if (!authReady) return (
     <div style={{ ...S.app, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}>
-      <TriondaBall size={56} />
+      <div style={{ width: 120, height: 6, borderRadius: 3, background: "linear-gradient(90deg, #E63946 0%, #E63946 33%, #2A9D5C 33%, #2A9D5C 66%, #1D6FB8 66%, #1D6FB8 100%)" }} />
       <div style={{ color: "#64748b", fontWeight: 600 }}>Loading…</div>
     </div>
   );
@@ -624,18 +640,14 @@ export default function StickerSwap() {
   if (page === "home") return (
     <div style={S.app}>
       <TriStripe />
-      <nav style={S.nav}>
-        <div style={S.logo}><TriondaBall size={28} /> StickerSwap</div>
-        <div style={S.navLinks}>
+      <nav className="ss-nav" style={S.nav}>
+        <div className="ss-logo" style={S.logo}>StickerSwap<span style={{color: TRI.green}}>Hub</span></div>
+        <div className="ss-navlinks" style={S.navLinks}>
           {user ? <><button style={S.navBtn(false)} onClick={() => setPage("collection")}>My Collection</button><button style={S.navBtn(false)} onClick={() => setPage("matches")}>Find Trades</button><button style={S.navBtn(false)} onClick={goTrades}>My Trades</button><button style={S.navBtn(false)} onClick={logout}>Logout</button></> : <><button style={S.navBtn(false)} onClick={() => { setAuthMode("login"); setPage("auth"); }}>Login</button><button style={{...S.btn(), border: "none", borderRadius: 8, padding: "8px 16px"}} onClick={() => { setAuthMode("register"); setPage("auth"); }}>Sign Up</button></>}
         </div>
       </nav>
       <div style={{ position: "relative", overflow: "hidden" }}>
-        {/* decorative ball corner accents */}
-        <div style={{ position: "absolute", top: -40, right: -40, opacity: 0.08, transform: "rotate(15deg)" }}><TriondaBall size={220} /></div>
-        <div style={{ position: "absolute", bottom: 40, left: -30, opacity: 0.06, transform: "rotate(-20deg)" }}><TriondaBall size={140} /></div>
-        <div style={{ maxWidth: 900, margin: "0 auto", padding: "80px 20px", textAlign: "center", position: "relative" }}>
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}><TriondaBall size={72} /></div>
+        <div style={{ maxWidth: 900, margin: "0 auto", padding: "72px 20px", textAlign: "center", position: "relative" }}>
           {daysToWC > 0 && (
             <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 999, padding: "6px 16px", marginBottom: 20, fontSize: 13, fontWeight: 600, color: "#475569", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
               <span style={{ width: 8, height: 8, borderRadius: "50%", background: TRI.green, display: "inline-block" }} />
@@ -653,7 +665,7 @@ export default function StickerSwap() {
             <button style={{ ...S.btn(), fontSize: 16, padding: "14px 32px", borderRadius: 12 }} onClick={() => { setAuthMode("register"); setPage("auth"); }}>Get started free →</button>
             <button style={{ ...S.btn("ghost"), fontSize: 16, padding: "14px 32px", borderRadius: 12 }} onClick={continueAsGuest}>Browse stickers</button>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20, marginTop: 80, textAlign: "left" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16, marginTop: 64, textAlign: "left" }}>
             {[
               { icon: "📋", title: "Track 980 stickers", desc: "Mark what you have, need, or have double — all 48 teams included.", c: TRI.blue },
               { icon: "🤝", title: "Smart matching", desc: "We find collectors who have what you need and need what you have.", c: TRI.green },
@@ -667,7 +679,7 @@ export default function StickerSwap() {
             ))}
           </div>
           <div style={{ marginTop: 40, padding: 20, background: "#fffbeb", borderRadius: 12, border: "1px solid #fde68a", fontSize: 14, color: "#92400e", textAlign: "left" }}>
-            ⚠️ StickerSwap facilitates trade matching only. We do not handle payments or guarantee trades. We recommend using PayPal Goods & Services for payment protection. Report scammers and they will be banned.
+            ⚠️ StickerSwapHub facilitates trade matching only. We do not handle payments or guarantee trades. We recommend using PayPal Goods & Services for payment protection. Report scammers and they will be banned.
           </div>
         </div>
       </div>
@@ -677,7 +689,7 @@ export default function StickerSwap() {
   if (page === "auth") return (
     <div style={S.app}>
       <TriStripe />
-      <nav style={S.nav}><div style={{ ...S.logo, cursor: "pointer" }} onClick={() => setPage("home")}><TriondaBall size={24} /> StickerSwap</div></nav>
+      <nav className="ss-nav" style={S.nav}><div className="ss-logo" style={{ ...S.logo, cursor: "pointer" }} onClick={() => setPage("home")}>StickerSwap<span style={{color: TRI.green}}>Hub</span></div></nav>
       <div style={{ maxWidth: 440, margin: "60px auto", padding: "0 20px" }}>
         <div style={S.card}>
           <h2 style={{ ...S.h2, textAlign: "center" }}>{authMode === "login" ? "Welcome back" : "Create account"}</h2>
@@ -714,9 +726,9 @@ export default function StickerSwap() {
   if (page === "collection") return (
     <div style={S.app}>
       <TriStripe />
-      <nav style={S.nav}>
-        <div style={S.logo} onClick={() => setPage("home")}><TriondaBall size={24} /> StickerSwap</div>
-        <div style={S.navLinks}>
+      <nav className="ss-nav" style={S.nav}>
+        <div className="ss-logo" style={S.logo} onClick={() => setPage("home")}>StickerSwap<span style={{color: TRI.green}}>Hub</span></div>
+        <div className="ss-navlinks" style={S.navLinks}>
           <button style={S.navBtn(page === "collection")} onClick={() => setPage("collection")}>Collection</button>
           <button style={S.navBtn(false)} onClick={() => user?.isGuest ? showToast("Sign up to find trades!", "error") : setPage("matches")}>Find Trades</button>
           {user && !user.isGuest && <button style={S.navBtn(false)} onClick={goTrades}>Trades {myTrades.filter(t=>t.to_id===user?.id && t.status==="pending").length > 0 && `(${myTrades.filter(t=>t.to_id===user?.id && t.status==="pending").length})`}</button>}
@@ -726,7 +738,7 @@ export default function StickerSwap() {
       <div style={S.page}>
         {/* World Cup banner */}
         <div style={{ background: "linear-gradient(120deg, #0f172a 0%, #1e3a5f 100%)", borderRadius: 16, padding: "20px 24px", marginBottom: 24, color: "#fff", position: "relative", overflow: "hidden" }}>
-          <div style={{ position: "absolute", right: -20, top: -10, opacity: 0.25 }}><TriondaBall size={130} /></div>
+          <div style={{ position: "absolute", right: -20, top: -10, opacity: 0.25 }}></div>
           <div style={{ fontSize: 12, letterSpacing: "0.15em", color: "#D4A017", fontWeight: 700, textTransform: "uppercase" }}>FIFA World Cup 2026 · USA · Canada · Mexico</div>
           <div style={{ fontSize: 24, fontWeight: 800, marginTop: 4 }}>Your Panini Album</div>
           {user && !user.isGuest && (
@@ -745,9 +757,9 @@ export default function StickerSwap() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 24 }}>
             {[
               { label: "Total stickers", val: stats.total, color: "#64748b" },
-              { label: "Have ✅", val: stats.have, color: TRI.green },
+              { label: "Owned ✅", val: stats.have, color: TRI.green },
               { label: "Need 🔴", val: stats.need, color: TRI.red },
-              { label: "Double 🔵", val: stats.double, color: TRI.blue },
+              { label: "Doubles 🔵", val: stats.double, color: TRI.blue },
             ].map((s,i) => (
               <div key={i} style={{ ...S.card, textAlign: "center", padding: 16 }}>
                 <div style={{ fontSize: 28, fontWeight: 800, color: s.color }}>{s.val}</div>
@@ -795,7 +807,7 @@ export default function StickerSwap() {
               color: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between",
               boxShadow: "0 4px 16px rgba(15,23,42,0.2)", position: "relative", overflow: "hidden",
             }}>
-              <div style={{ position: "absolute", right: 20, top: "50%", transform: "translateY(-50%)", opacity: 0.22 }}><TriondaBall size={110} /></div>
+              <div style={{ position: "absolute", right: 20, top: "50%", transform: "translateY(-50%)", opacity: 0.22 }}></div>
               <div style={{ textAlign: "left", position: "relative" }}>
                 <div style={{ fontSize: 12, letterSpacing: "0.15em", color: "#D4A017", fontWeight: 700, textTransform: "uppercase" }}>Start here</div>
                 <div style={{ fontSize: 22, fontWeight: 800, marginTop: 2 }}>🏆 Tournament Specials</div>
@@ -814,7 +826,9 @@ export default function StickerSwap() {
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {g.teams.map(t => {
-                      const owned = ALL_STICKERS.filter(s => s.team === t.code && collection[s.id] === "have").length;
+                      const teamStickers = ALL_STICKERS.filter(s => s.team === t.code);
+                      const owned = teamStickers.filter(s => collection[s.id] === "have" || collection[s.id] === "double").length;
+                      const doubles = teamStickers.filter(s => collection[s.id] === "double").length;
                       return (
                         <button key={t.code} onClick={() => setSelectedTeam(t.code)} style={{
                           display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -822,7 +836,12 @@ export default function StickerSwap() {
                           padding: "8px 12px", cursor: "pointer", fontSize: 14, fontWeight: 600, color: "#0f172a",
                         }}>
                           <span style={{ display: "flex", alignItems: "center", gap: 8 }}><Flag iso={t.iso} code={t.code} size={20} /> {t.name}</span>
-                          {user && !user.isGuest && owned > 0 && <span style={{ fontSize: 11, color: TRI.green, fontWeight: 700 }}>{owned}/20</span>}
+                          {user && !user.isGuest && (owned > 0 || doubles > 0) && (
+                            <span style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+                              {owned > 0 && <span style={{ fontSize: 11, color: TRI.green, fontWeight: 700 }}>{owned}/20</span>}
+                              {doubles > 0 && <span style={{ fontSize: 11, color: TRI.blue, fontWeight: 700 }}>{doubles} dbl</span>}
+                            </span>
+                          )}
                         </button>
                       );
                     })}
@@ -846,7 +865,7 @@ export default function StickerSwap() {
               ))}
             </div>
             {user && <div style={{ marginTop: 20, fontSize: 13, color: "#475569", textAlign: "center" }}>
-              Click a sticker to cycle: None → ✅ Have → 🔴 Need → 🔵 Double → None
+              Click a sticker to cycle: None → ✅ Have → 🔴 Need → 🔵 Have ×2 (double) → None. A double counts as owned and is what you trade away.
             </div>}
           </>
         )}
@@ -859,9 +878,9 @@ export default function StickerSwap() {
   if (page === "matches") return (
     <div style={S.app}>
       <TriStripe />
-      <nav style={S.nav}>
-        <div style={S.logo} onClick={() => setPage("home")}><TriondaBall size={24} /> StickerSwap</div>
-        <div style={S.navLinks}>
+      <nav className="ss-nav" style={S.nav}>
+        <div className="ss-logo" style={S.logo} onClick={() => setPage("home")}>StickerSwap<span style={{color: TRI.green}}>Hub</span></div>
+        <div className="ss-navlinks" style={S.navLinks}>
           <button style={S.navBtn(false)} onClick={() => setPage("collection")}>Collection</button>
           <button style={S.navBtn(true)} onClick={() => setPage("matches")}>Find Trades</button>
           <button style={S.navBtn(false)} onClick={goTrades}>Trades</button>
@@ -980,9 +999,9 @@ export default function StickerSwap() {
   if (page === "trades") return (
     <div style={S.app}>
       <TriStripe />
-      <nav style={S.nav}>
-        <div style={S.logo} onClick={() => setPage("home")}><TriondaBall size={24} /> StickerSwap</div>
-        <div style={S.navLinks}>
+      <nav className="ss-nav" style={S.nav}>
+        <div className="ss-logo" style={S.logo} onClick={() => setPage("home")}>StickerSwap<span style={{color: TRI.green}}>Hub</span></div>
+        <div className="ss-navlinks" style={S.navLinks}>
           <button style={S.navBtn(false)} onClick={() => setPage("collection")}>Collection</button>
           <button style={S.navBtn(false)} onClick={() => setPage("matches")}>Find Trades</button>
           <button style={S.navBtn(true)} onClick={goTrades}>Trades</button>
