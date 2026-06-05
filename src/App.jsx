@@ -76,8 +76,8 @@ const TEAMS_DATA = [
   // ─── GROUP I ───
   { code: "FRA", name: "France", iso: "fr", group: "I", players: ["Mike Maignan","Theo Hernandez","William Saliba","Jules Kounde","Ibrahima Konate","Dayot Upamecano","Lucas Digne","Aurélien Tchouaméni","Eduardo Camavinga","Manu Kone","Adrien Rabiot","Team Photo","Michael Olise","Ousmane Dembele","Bradley Barcola","Désiré Doué","Kingsley Coman","Hugo Ekitike","Kylian Mbappe"] },
   { code: "SEN", name: "Senegal", iso: "sn", group: "I", players: ["Edouard Mendy","Yehvann Diouf","Moussa Niakhaté","Abdoulaye Seck","Ismail Jakobs","El Hadji Malick Diouf","Kalidou Koulibaly","Idrissa Gana Gueye","Pape Matar Sarr","Pape Gueye","Habib Diarra","Team Photo","Lamine Camara","Sadio Mane","Ismaïla Sarr","Boulaye Dia","Iliman Ndiaye","Nicolas Jackson","Krepin Diatta"] },
-  { code: "NOR", name: "Norway", iso: "no", group: "I", players: ["Orjan Nyland","Julian Ryerson","Leo Ostigård","Kristoffer Vassbakk Ajer","Marcus Holmgren Pedersen","David Møller Wolfe","Torbjørn Heggem","Morten Thorsby","Martin Ødegaard","Sander Berge","Andreas Schjelderup","Team Photo","Patrick Berg","Erling Haaland","Alexander Sørloth","Aron Dønnum","Jorgen Strand Larsen","Antonio Nusa","Oscar Bobb"] },
   { code: "IRQ", name: "Iraq", iso: "iq", group: "I", players: ["Jalal Hassan","Rebin Sulaka","Hussein Ali","Akam Hashem","Merchas Doski","Zaid Tahseen","Manaf Younis","Zidane Iqbal","Amir Al-Ammari","Ibrahim Bayesh","Ali Jasim","Team Photo","Youssef Amyn","Aimar Sher","Marko Farji","Osama Rashid","Ali Al-Hamadi","Aymen Hussein","Mohanad Ali"] },
+  { code: "NOR", name: "Norway", iso: "no", group: "I", players: ["Orjan Nyland","Julian Ryerson","Leo Ostigård","Kristoffer Vassbakk Ajer","Marcus Holmgren Pedersen","David Møller Wolfe","Torbjørn Heggem","Morten Thorsby","Martin Ødegaard","Sander Berge","Andreas Schjelderup","Team Photo","Patrick Berg","Erling Haaland","Alexander Sørloth","Aron Dønnum","Jorgen Strand Larsen","Antonio Nusa","Oscar Bobb"] },
   // ─── GROUP J ───
   { code: "ARG", name: "Argentina", iso: "ar", group: "J", players: ["Emiliano Martinez","Nahuel Molina","Cristian Romero","Nicolas Otamendi","Nicolas Tagliafico","Leonardo Balerdi","Enzo Fernandez","Alexis Mac Allister","Rodrigo De Paul","Exequiel Palacios","Leandro Paredes","Team Photo","Nico Paz","Franco Mastantuono","Nico Gonzalez","Lionel Messi","Lautaro Martinez","Julian Alvarez","Giuliano Simeone"] },
   { code: "ALG", name: "Algeria", iso: "dz", group: "J", players: ["Alexis Guendouz","Ramy Bensebaini","Youcef Atal","Rayan Aït-Nouri","Mohamed Amine Tougai","Aïssa Mandi","Ismael Bennacer","Houssem Aouar","Hicham Boudaoui","Ramiz Zerrouki","Nabil Bentaleb","Team Photo","Farés Chaibi","Riyad Mahrez","Said Benrahma","Anis Hadj Moussa","Amine Gouiri","Baghdad Bounedjah","Mohammed Amoura"] },
@@ -282,13 +282,14 @@ function StickerCard({ sticker, status, onToggle }) {
     none: { bg: "#e2e8f0", label: "" },
   };
   const c = colors[status] || colors.none;
+  const owned = status === "have" || status === "double"; // visually "filled in"
 
   return (
     <div
       onClick={() => onToggle(sticker.id)}
       style={{
-        background: status !== "none" ? `${c.bg}14` : "#ffffff",
-        border: `2px solid ${status !== "none" ? c.bg : "#e2e8f0"}`,
+        background: owned ? `${c.bg}14` : "#ffffff",
+        border: `2px solid ${owned ? c.bg : "#f1d4d7"}`,
         borderRadius: 12,
         padding: "10px 8px",
         cursor: "pointer",
@@ -300,19 +301,18 @@ function StickerCard({ sticker, status, onToggle }) {
         userSelect: "none",
         position: "relative",
         minHeight: 80,
-        boxShadow: status !== "none" ? `0 2px 8px ${c.bg}22` : "0 1px 2px rgba(0,0,0,0.04)",
+        opacity: owned ? 1 : 0.78,
+        boxShadow: owned ? `0 2px 8px ${c.bg}22` : "0 1px 2px rgba(0,0,0,0.04)",
       }}
     >
       {sticker.foil && (
         <div style={{ position: "absolute", top: 4, right: 4, fontSize: 9, background: "linear-gradient(135deg,#D4A017,#f0c14b)", color: "#fff", borderRadius: 4, padding: "1px 4px", fontWeight: 700 }}>FOIL</div>
       )}
       <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.05em" }}>{sticker.code}</div>
-      <div style={{ fontSize: 11, color: status !== "none" ? c.bg : "#475569", textAlign: "center", fontWeight: 500, lineHeight: 1.2, flex: 1, display: "flex", alignItems: "center" }}>
+      <div style={{ fontSize: 11, color: owned ? c.bg : "#475569", textAlign: "center", fontWeight: 500, lineHeight: 1.2, flex: 1, display: "flex", alignItems: "center" }}>
         {sticker.name}
       </div>
-      {status !== "none" && (
-        <div style={{ fontSize: 9, background: c.bg, color: "#fff", borderRadius: 6, padding: "2px 6px", fontWeight: 700 }}>{c.label}</div>
-      )}
+      <div style={{ fontSize: 9, background: c.bg, color: "#fff", borderRadius: 6, padding: "2px 6px", fontWeight: 700 }}>{c.label}</div>
     </div>
   );
 }
@@ -484,19 +484,20 @@ export default function StickerSwap() {
     const vals = Object.values(collection);
     const dbl = vals.filter(v => v === "double").length;
     const owned = vals.filter(v => v === "have" || v === "double").length; // a double is also owned
-    const need = vals.filter(v => v === "need").length;
+    const need = ALL_STICKERS.length - owned; // everything you don't own, you need
     return { have: owned, need, double: dbl, total: ALL_STICKERS.length };
   }, [collection]);
 
   const cycleStatus = async (id) => {
-    const cur = collection[id] || "none";
-    const next = { none: "have", have: "need", need: "double", double: "none" }[cur];
-    // optimistic update
+    const cur = collection[id] || "need"; // unmarked = need by default
+    // need -> have -> double -> need
+    const next = { need: "have", have: "double", double: "need", none: "have" }[cur];
     const newCol = { ...collection };
-    if (next === "none") delete newCol[id]; else newCol[id] = next;
+    // "need" is the implicit default, so we don't store it — just remove the row
+    if (next === "need") delete newCol[id]; else newCol[id] = next;
     setCollection(newCol);
     if (user?.isGuest) { guestStore.set(newCol); return; }
-    if (user) { try { await db.setSticker(user.id, id, next); } catch (e) { showToast("Save failed", "error"); } }
+    if (user) { try { await db.setSticker(user.id, id, next === "need" ? "none" : next); } catch (e) { showToast("Save failed", "error"); } }
   };
 
   const handleSelectAll = async (status) => {
@@ -552,11 +553,17 @@ export default function StickerSwap() {
     setAuthLoading(false);
   };
 
+  // A collector "needs" every sticker they don't own (not have, not double)
+  const needsFromCollection = (col) => ALL_STICKERS.filter(s => {
+    const st = col[s.id];
+    return st !== "have" && st !== "double";
+  }).map(s => s.id);
+
   const findMatches = async () => {
     setMatchLoading(true);
     try {
       const myDoubles = Object.entries(collection).filter(([,v]) => v === "double").map(([k]) => k);
-      const myNeeds = Object.entries(collection).filter(([,v]) => v === "need").map(([k]) => k);
+      const myNeeds = needsFromCollection(collection);
       const [profiles, allCols, allReviews] = await Promise.all([
         db.getAllProfiles(), db.getAllCollections(), db.getAllReviews(),
       ]);
@@ -564,15 +571,16 @@ export default function StickerSwap() {
       // group collections by user
       const byUser = {};
       allCols.forEach(r => { (byUser[r.user_id] = byUser[r.user_id] || {})[r.sticker_id] = r.status; });
+      const myNeedsSet = new Set(myNeeds);
       const results = profiles
         .filter(p => p.id !== user?.id)
         .filter(p => !matchCountry || p.country === matchCountry)
         .map(p => {
           const theirCol = byUser[p.id] || {};
           const theirDoubles = Object.entries(theirCol).filter(([,v]) => v === "double").map(([k]) => k);
-          const theirNeeds = Object.entries(theirCol).filter(([,v]) => v === "need").map(([k]) => k);
-          const iCanGive = myDoubles.filter(s => theirNeeds.includes(s));
-          const theyCanGive = theirDoubles.filter(s => myNeeds.includes(s));
+          const theirNeedsSet = new Set(needsFromCollection(theirCol));
+          const iCanGive = myDoubles.filter(s => theirNeedsSet.has(s));
+          const theyCanGive = theirDoubles.filter(s => myNeedsSet.has(s));
           const userReviews = allReviews.filter(r => r.receiver_id === p.id);
           const avgRating = userReviews.length ? (userReviews.reduce((a,b) => a + b.rating, 0) / userReviews.length).toFixed(1) : null;
           return { user: p, iCanGive, theyCanGive, score: iCanGive.length + theyCanGive.length, avgRating, reviewCount: userReviews.length };
@@ -662,11 +670,11 @@ export default function StickerSwap() {
       ]);
       if (!profile) { setScanError("Could not find that collector."); return; }
       const myDoubles = Object.entries(collection).filter(([,v]) => v === "double").map(([k]) => k);
-      const myNeeds = Object.entries(collection).filter(([,v]) => v === "need").map(([k]) => k);
+      const myNeedsSet = new Set(needsFromCollection(collection));
       const theirDoubles = Object.entries(theirCol).filter(([,v]) => v === "double").map(([k]) => k);
-      const theirNeeds = Object.entries(theirCol).filter(([,v]) => v === "need").map(([k]) => k);
-      const iCanGive = myDoubles.filter(s => theirNeeds.includes(s));
-      const theyCanGive = theirDoubles.filter(s => myNeeds.includes(s));
+      const theirNeedsSet = new Set(needsFromCollection(theirCol));
+      const iCanGive = myDoubles.filter(s => theirNeedsSet.has(s));
+      const theyCanGive = theirDoubles.filter(s => myNeedsSet.has(s));
       setScanResult({ user: profile, iCanGive, theyCanGive });
       setShowScanner(false);
     } catch {
@@ -858,10 +866,9 @@ export default function StickerSwap() {
           <input style={{ ...S.input, maxWidth: 200 }} placeholder="Search sticker..." value={searchQ} onChange={e => setSearchQ(e.target.value)} />
           {user && (selectedTeam || searchQ) && (
             <div style={{ display: "flex", gap: 8 }}>
-              <button style={{ ...S.btn("ghost"), fontSize: 12, padding: "6px 12px" }} onClick={() => handleSelectAll("have")}>All Have</button>
-              <button style={{ ...S.btn("ghost"), fontSize: 12, padding: "6px 12px" }} onClick={() => handleSelectAll("need")}>All Need</button>
-              <button style={{ ...S.btn("ghost"), fontSize: 12, padding: "6px 12px" }} onClick={() => handleSelectAll("double")}>All Double</button>
-              <button style={{ ...S.btn("ghost"), fontSize: 12, padding: "6px 12px", color: "#E63946" }} onClick={handleClear}>Clear</button>
+              <button style={{ ...S.btn("ghost"), fontSize: 12, padding: "6px 12px" }} onClick={() => handleSelectAll("have")}>Mark all Have</button>
+              <button style={{ ...S.btn("ghost"), fontSize: 12, padding: "6px 12px" }} onClick={() => handleSelectAll("double")}>Mark all Double</button>
+              <button style={{ ...S.btn("ghost"), fontSize: 12, padding: "6px 12px", color: "#E63946" }} onClick={handleClear}>Reset to Need</button>
             </div>
           )}
         </div>
@@ -878,7 +885,7 @@ export default function StickerSwap() {
             {teamStickers.length === 0 ? <div style={{ color: "#64748b" }}>No stickers found.</div> : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 8 }}>
                 {teamStickers.map(s => (
-                  <StickerCard key={s.id} sticker={s} status={collection[s.id] || "none"} onToggle={cycleStatus} />
+                  <StickerCard key={s.id} sticker={s} status={collection[s.id] || "need"} onToggle={cycleStatus} />
                 ))}
               </div>
             )}
@@ -965,11 +972,11 @@ export default function StickerSwap() {
             })()}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 8 }}>
               {teamStickers.map(s => (
-                <StickerCard key={s.id} sticker={s} status={collection[s.id] || "none"} onToggle={cycleStatus} />
+                <StickerCard key={s.id} sticker={s} status={collection[s.id] || "need"} onToggle={cycleStatus} />
               ))}
             </div>
             {user && <div style={{ marginTop: 20, fontSize: 13, color: "#475569", textAlign: "center" }}>
-              Click a sticker to cycle: None → ✅ Have → 🔴 Need → 🔵 Have ×2 (double) → None. A double counts as owned and is what you trade away.
+              Everything starts as 🔴 Need. Click a sticker to mark it ✅ Have, click again for 🔵 Have ×2 (a double you can trade away), click again to go back to Need.
             </div>}
           </>
         )}
