@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@supabase/supabase-js";
 import QRCode from "qrcode";
 import { Html5Qrcode } from "html5-qrcode";
+import Tesseract from "tesseract.js";
 
 // ─── SUPABASE CLIENT ─────────────────────────────────────────────────────────
 const SUPABASE_URL = "https://jdquouehjxogmhqroygb.supabase.co";
@@ -382,6 +383,7 @@ export default function StickerSwap() {
   const [showScanner, setShowScanner] = useState(false);
   const [scanResult, setScanResult] = useState(null); // { user, iCanGive, theyCanGive }
   const [scanError, setScanError] = useState("");
+  const [photoScan, setPhotoScan] = useState(null); // { team, owned:Set, status, progress }
   const [profileNames, setProfileNames] = useState({});
   const [selectedMatch, setSelectedMatch] = useState(null);
   const [tradeMsg, setTradeMsg] = useState("");
@@ -410,7 +412,77 @@ export default function StickerSwap() {
     document.head.appendChild(style);
   }, []);
 
-  // ── QR scanner lifecycle ──
+  // ── Photo scan: OCR a team page to detect which stickers are filled in ──
+  const handlePhotoScan = async (file, teamCode) => {
+    const team = TEAMS.find(t => t.code === teamCode);
+    if (!team) return;
+    setPhotoScan({ team, owned: new Set(), status: "processing", progress: 0 });
+    try {
+      const { data } = await Tesseract.recognize(file, "eng", {
+        logger: m => {
+          if (m.status === "recognizing text") {
+            setPhotoScan(prev => prev ? { ...prev, progress: Math.round(m.progress * 100) } : prev);
+          }
+        },
+      });
+      const text = (data.text || "").toUpperCase();
+      // Find all visible numbers near the team code -> these are EMPTY slots
+      // The album prints e.g. "TUN 11" on empty slots; filled slots hide the code.
+      const teamStickerNums = ALL_STICKERS.filter(s => s.team === teamCode).map(s => parseInt(s.code.replace(teamCode, ""), 10));
+      const emptyNums = new Set();
+      // Match patterns like "TUN 11", "TUN11", "CPV 7", possibly with line breaks
+      const re = new RegExp(`${teamCode}\\s*0*(\\d{1,2})`, "g");
+      let mm;
+      while ((mm = re.exec(text)) !== null) {
+        const n = parseInt(mm[1], 10);
+        if (n >= 1 && n <= 20) emptyNums.add(n);
+      }
+      // Owned = all slots that are NOT detected as empty
+      const owned = new Set();
+      teamStickerNums.forEach(n => { if (!emptyNums.has(n)) owned.add(n); });
+      setPhotoScan({ team, owned, status: "review", progress: 100, detectedEmpty: emptyNums.size });
+    } catch (e) {
+      setPhotoScan({ team, owned: new Set(), status: "error", progress: 0 });
+    }
+  };
+
+  const togglePhotoSlot = (num) => {
+    setPhotoScan(prev => {
+      if (!prev) return prev;
+      const owned = new Set(prev.owned);
+      if (owned.has(num)) owned.delete(num); else owned.add(num);
+      return { ...prev, owned };
+    });
+  };
+
+  const confirmPhotoScan = async () => {
+    if (!photoScan) return;
+    const teamCode = photoScan.team.code;
+    const newCol = { ...collection };
+    // For each team slot: if in owned -> "have" (unless already double), else need (remove)
+    ALL_STICKERS.filter(s => s.team === teamCode).forEach(s => {
+      const num = parseInt(s.code.replace(teamCode, ""), 10);
+      if (photoScan.owned.has(num)) {
+        if (newCol[s.id] !== "double") newCol[s.id] = "have";
+      } else {
+        delete newCol[s.id]; // back to need
+      }
+    });
+    setCollection(newCol);
+    const ids = ALL_STICKERS.filter(s => s.team === teamCode).map(s => s.id);
+    if (user?.isGuest) { guestStore.set(newCol); }
+    else if (user) {
+      try {
+        const haveIds = ids.filter(id => newCol[id] === "have");
+        const clearIds = ids.filter(id => !newCol[id]);
+        if (haveIds.length) await db.setManyStickers(user.id, haveIds, "have");
+        if (clearIds.length) await db.setManyStickers(user.id, clearIds, "none");
+      } catch { showToast("Save failed", "error"); }
+    }
+    showToast(`${photoScan.team.name}: ${photoScan.owned.size} stickers marked as owned ✅`);
+    setPhotoScan(null);
+  };
+
   useEffect(() => {
     if (!showScanner) return;
     let scanner;
@@ -970,6 +1042,15 @@ export default function StickerSwap() {
                 </div>
               );
             })()}
+            {user && !user.isGuest && selectedTeam !== "FWC" && (
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ ...S.btn(), border: "none", padding: "10px 18px", display: "inline-flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                  📷 Scan this page
+                  <input type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={e => { if (e.target.files?.[0]) handlePhotoScan(e.target.files[0], selectedTeam); e.target.value = ""; }} />
+                </label>
+                <span style={{ fontSize: 12, color: "#94a3b8", marginLeft: 10 }}>Take a photo of your album page to auto-fill what you have.</span>
+              </div>
+            )}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 8 }}>
               {teamStickers.map(s => (
                 <StickerCard key={s.id} sticker={s} status={collection[s.id] || "need"} onToggle={cycleStatus} />
@@ -981,6 +1062,66 @@ export default function StickerSwap() {
           </>
         )}
       </div>
+
+      {/* Scanning in progress + result confirmation */}
+      {photoScan && photoScan.status === "processing" && (
+        <div style={{ position: "fixed", inset: 0, background: "#000c", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 20 }}>
+          <div style={{ ...S.card, maxWidth: 360, width: "100%", textAlign: "center" }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>📷</div>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>Reading your album page…</div>
+            <div style={{ height: 8, background: "#e2e8f0", borderRadius: 8, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${photoScan.progress}%`, background: `linear-gradient(90deg, ${TRI.green}, ${TRI.blue})`, transition: "width 0.2s" }} />
+            </div>
+            <div style={{ fontSize: 13, color: "#64748b", marginTop: 8 }}>{photoScan.progress}%</div>
+          </div>
+        </div>
+      )}
+
+      {photoScan && photoScan.status === "error" && (
+        <div style={{ position: "fixed", inset: 0, background: "#000a", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 20 }} onClick={() => setPhotoScan(null)}>
+          <div style={{ ...S.card, maxWidth: 360, width: "100%", textAlign: "center" }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>😕</div>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>Couldn't read that photo</div>
+            <p style={{ color: "#64748b", fontSize: 13, marginBottom: 16 }}>Try again with a clear, straight-on photo of the page in good light.</p>
+            <button style={{ ...S.btn("ghost"), width: "100%" }} onClick={() => setPhotoScan(null)}>Close</button>
+          </div>
+        </div>
+      )}
+
+      {photoScan && photoScan.status === "review" && (() => {
+        const slots = ALL_STICKERS.filter(s => s.team === photoScan.team.code && !s.isLogo);
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "#000a", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 16 }}>
+            <div style={{ ...S.card, maxWidth: 560, width: "100%", maxHeight: "90vh", overflowY: "auto" }}>
+              <h3 style={{ marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}><Flag iso={photoScan.team.iso} code={photoScan.team.code} size={22} /> {photoScan.team.name} — check the result</h3>
+              <p style={{ color: "#64748b", fontSize: 13, marginBottom: 16 }}>Green = we think you <b>have</b> it. Compare with your album and tap any sticker to fix it, then save.</p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                {slots.map(s => {
+                  const num = parseInt(s.code.replace(photoScan.team.code, ""), 10);
+                  const has = photoScan.owned.has(num);
+                  return (
+                    <div key={s.id} onClick={() => togglePhotoSlot(num)} style={{
+                      cursor: "pointer", borderRadius: 10, padding: "8px 6px", textAlign: "center", userSelect: "none",
+                      background: has ? "#2A9D5C18" : "#ffffff",
+                      border: `2px solid ${has ? "#2A9D5C" : "#e2e8f0"}`,
+                      minHeight: 64, display: "flex", flexDirection: "column", justifyContent: "center", gap: 2,
+                    }}>
+                      <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700 }}>{s.code}</div>
+                      <div style={{ fontSize: 10, color: has ? "#2A9D5C" : "#475569", lineHeight: 1.1 }}>{s.name}</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: has ? "#2A9D5C" : "#cbd5e1" }}>{has ? "✓ Have" : "Need"}</div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 12, color: "#64748b", marginTop: 12, textAlign: "center" }}>{photoScan.owned.size} of {slots.length} marked as Have</div>
+              <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+                <button style={{ ...S.btn(), border: "none", flex: 1 }} onClick={confirmPhotoScan}>Save these</button>
+                <button style={{ ...S.btn("ghost"), flex: 1 }} onClick={() => setPhotoScan(null)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {toast && <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: toast.type === "error" ? "#E63946" : "#2A9D5C", color: "#fff", padding: "12px 24px", borderRadius: 12, fontWeight: 600, zIndex: 999, boxShadow: "0 8px 32px rgba(0,0,0,0.3)" }}>{toast.msg}</div>}
     </div>
