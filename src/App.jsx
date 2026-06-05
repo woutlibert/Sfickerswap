@@ -1042,16 +1042,7 @@ export default function StickerSwap() {
                 </div>
               );
             })()}
-            {user && !user.isGuest && selectedTeam !== "FWC" && (
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ ...S.btn(), border: "none", padding: "10px 18px", display: "inline-flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                  📷 Scan this page
-                  <input type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={e => { if (e.target.files?.[0]) handlePhotoScan(e.target.files[0], selectedTeam); e.target.value = ""; }} />
-                </label>
-                <span style={{ fontSize: 12, color: "#94a3b8", marginLeft: 10 }}>Take a photo of your album page to auto-fill what you have.</span>
-              </div>
-            )}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
               {teamStickers.map(s => (
                 <StickerCard key={s.id} sticker={s} status={collection[s.id] || "need"} onToggle={cycleStatus} />
               ))}
