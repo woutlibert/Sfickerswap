@@ -166,7 +166,7 @@ const db = {
     return data;
   },
   async getUserCollection(userId) {
-    const { data } = await supabase.from("collections").select("sticker_id,status").eq("user_id", userId);
+    const { data } = await supabase.from("collections").select("sticker_id,status").eq("user_id", userId).in("status", ["have", "double"]);
     const map = {};
     (data || []).forEach(r => { map[r.sticker_id] = r.status; });
     return map;
@@ -204,8 +204,24 @@ const db = {
     return data || [];
   },
   async getAllCollections() {
-    const { data } = await supabase.from("collections").select("user_id,sticker_id,status");
-    return data || [];
+    // Supabase caps at 1000 rows per request — paginate to get everyone's data.
+    // We only need owned stickers (have/double); 'need' is implicit, never stored.
+    const pageSize = 1000;
+    let from = 0;
+    let all = [];
+    while (true) {
+      const { data, error } = await supabase
+        .from("collections")
+        .select("user_id,sticker_id,status")
+        .in("status", ["have", "double"])
+        .range(from, from + pageSize - 1);
+      if (error || !data) break;
+      all = all.concat(data);
+      if (data.length < pageSize) break; // last page
+      from += pageSize;
+      if (from > 200000) break; // hard safety cap
+    }
+    return all;
   },
   async getAllReviews() {
     const { data } = await supabase.from("reviews").select("*");
