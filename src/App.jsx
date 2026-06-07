@@ -367,6 +367,58 @@ function Flag({ iso, size = 20, code }) {
   );
 }
 
+// Reusable: a list of sticker IDs grouped by country, with per-country and global select-all.
+function GroupedStickerSelect({ ids, selected, onToggle, onSetMany, accent }) {
+  const groups = {};
+  ids.forEach(id => {
+    const s = STICKER_BY_ID[id];
+    const key = s ? s.team : "?";
+    (groups[key] = groups[key] || []).push(id);
+  });
+  const allSelected = ids.length > 0 && ids.every(id => selected.has(id));
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
+        <button onClick={() => onSetMany(ids, !allSelected)} style={{ background: "none", border: "none", color: accent, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+          {allSelected ? "Deselect all" : "Select all"}
+        </button>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {Object.keys(groups).map(teamCode => {
+          const teamIds = groups[teamCode];
+          const s0 = STICKER_BY_ID[teamIds[0]];
+          const teamAll = teamIds.every(id => selected.has(id));
+          return (
+            <div key={teamCode}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13 }}>
+                  <Flag iso={s0?.teamIso} code={teamCode} size={16} /> {s0?.teamName || teamCode}
+                </div>
+                <button onClick={() => onSetMany(teamIds, !teamAll)} style={{ background: "none", border: "none", color: accent, fontWeight: 600, fontSize: 11, cursor: "pointer" }}>
+                  {teamAll ? "Deselect" : "Select all"}
+                </button>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {teamIds.map(id => {
+                  const on = selected.has(id);
+                  const s = STICKER_BY_ID[id];
+                  return (
+                    <div key={id} onClick={() => onToggle(id)} style={{ cursor: "pointer", display: "flex", gap: 8, alignItems: "center", padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${on ? accent : "#e2e8f0"}`, background: on ? `${accent}12` : "#fff" }}>
+                      <span style={{ fontSize: 14 }}>{on ? "☑️" : "⬜"}</span>
+                      <span style={{ color: "#94a3b8", fontWeight: 700, fontSize: 12, minWidth: 52 }}>{id}</span>
+                      <span style={{ fontSize: 13 }}>{s ? s.name : id}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function TriStripe() {
   return <div style={{ height: 4, background: "linear-gradient(90deg, #E63946 0%, #E63946 33%, #2A9D5C 33%, #2A9D5C 66%, #1D6FB8 66%, #1D6FB8 100%)" }} />;
 }
@@ -418,6 +470,7 @@ export default function StickerSwap() {
   const [counterMode, setCounterMode] = useState(false); // editing a counter-offer inside chat
   const [counterGive, setCounterGive] = useState(new Set());
   const [counterGet, setCounterGet] = useState(new Set());
+  const [counterPool, setCounterPool] = useState({ give: [], get: [] });
   const [completeModal, setCompleteModal] = useState(null); // { trade, doublesStillDouble:Set }
   const [selectedMatch, setSelectedMatch] = useState(null);
   const [tradeMsg, setTradeMsg] = useState("");
@@ -700,12 +753,12 @@ export default function StickerSwap() {
     setMatchLoading(false);
   };
 
-  // Open the trade builder for a match (pre-select everything)
+  // Open the trade builder for a match (nothing pre-selected for clarity)
   const openTradeBuilder = (match) => {
     setTradeBuilder({
       match,
-      give: new Set(match.iCanGive),
-      get: new Set(match.theyCanGive),
+      give: new Set(),
+      get: new Set(),
     });
     setTradeMsg("");
   };
@@ -715,6 +768,22 @@ export default function StickerSwap() {
       const set = new Set(prev[which]);
       if (set.has(id)) set.delete(id); else set.add(id);
       return { ...prev, [which]: set };
+    });
+  };
+  const setManyBuilder = (which, ids, on) => {
+    setTradeBuilder(prev => {
+      if (!prev) return prev;
+      const set = new Set(prev[which]);
+      ids.forEach(id => { if (on) set.add(id); else set.delete(id); });
+      return { ...prev, [which]: set };
+    });
+  };
+  const setManyCounter = (which, ids, on) => {
+    const setter = which === "give" ? setCounterGive : setCounterGet;
+    setter(prev => {
+      const set = new Set(prev);
+      ids.forEach(id => { if (on) set.add(id); else set.delete(id); });
+      return set;
     });
   };
 
@@ -754,6 +823,20 @@ export default function StickerSwap() {
     setOpenChat(trade);
     setCounterMode(false);
     try { setChatMessages(await db.getMessages(trade.id)); } catch { setChatMessages([]); }
+    // compute full available pools (so a counter-offer can ADD stickers, not just remove)
+    try {
+      const iAmFrom = trade.from_id === user.id;
+      const partnerId = iAmFrom ? trade.to_id : trade.from_id;
+      const theirCol = await db.getUserCollection(partnerId);
+      const myDoubles = Object.entries(collection).filter(([,v]) => v === "double").map(([k]) => k);
+      const myNeedsSet = new Set(needsFromCollection(collection));
+      const theirDoubles = Object.entries(theirCol).filter(([,v]) => v === "double").map(([k]) => k);
+      const theirNeedsSet = new Set(needsFromCollection(theirCol));
+      // From my perspective: I can give my doubles they need; I can get their doubles I need
+      const givePool = myDoubles.filter(s => theirNeedsSet.has(s));
+      const getPool = theirDoubles.filter(s => myNeedsSet.has(s));
+      setCounterPool({ give: givePool, get: getPool });
+    } catch { setCounterPool({ give: [], get: [] }); }
   };
   const sendChat = async () => {
     if (!chatInput.trim() || !openChat) return;
@@ -1606,27 +1689,15 @@ export default function StickerSwap() {
               <p style={{ color: "#64748b", fontSize: 13, marginBottom: 16 }}>Tick exactly which stickers you want to give and receive. They can accept, decline, or send a counter-offer.</p>
 
               <div style={{ fontSize: 13, color: "#2A9D5C", fontWeight: 700, marginBottom: 6 }}>You give ({tradeBuilder.give.size}):</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 16 }}>
-                {m.iCanGive.map(id => {
-                  const on = tradeBuilder.give.has(id);
-                  return <div key={id} onClick={() => toggleBuilder("give", id)} style={{ cursor: "pointer", display: "flex", gap: 8, alignItems: "center", padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${on ? "#2A9D5C" : "#e2e8f0"}`, background: on ? "#2A9D5C12" : "#fff" }}>
-                    <span style={{ fontSize: 14 }}>{on ? "☑️" : "⬜"}</span>
-                    <span style={{ color: "#94a3b8", fontWeight: 700, fontSize: 12, minWidth: 52 }}>{id}</span>
-                    <span style={{ fontSize: 13 }}>{stickerLabel(id)}</span>
-                  </div>;
-                })}
+              <div style={{ marginBottom: 16 }}>
+                <GroupedStickerSelect ids={m.iCanGive} selected={tradeBuilder.give} accent="#2A9D5C"
+                  onToggle={(id) => toggleBuilder("give", id)} onSetMany={(ids, on) => setManyBuilder("give", ids, on)} />
               </div>
 
               <div style={{ fontSize: 13, color: "#E63946", fontWeight: 700, marginBottom: 6 }}>You get ({tradeBuilder.get.size}):</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 16 }}>
-                {m.theyCanGive.map(id => {
-                  const on = tradeBuilder.get.has(id);
-                  return <div key={id} onClick={() => toggleBuilder("get", id)} style={{ cursor: "pointer", display: "flex", gap: 8, alignItems: "center", padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${on ? "#E63946" : "#e2e8f0"}`, background: on ? "#E6394612" : "#fff" }}>
-                    <span style={{ fontSize: 14 }}>{on ? "☑️" : "⬜"}</span>
-                    <span style={{ color: "#94a3b8", fontWeight: 700, fontSize: 12, minWidth: 52 }}>{id}</span>
-                    <span style={{ fontSize: 13 }}>{stickerLabel(id)}</span>
-                  </div>;
-                })}
+              <div style={{ marginBottom: 16 }}>
+                <GroupedStickerSelect ids={m.theyCanGive} selected={tradeBuilder.get} accent="#E63946"
+                  onToggle={(id) => toggleBuilder("get", id)} onSetMany={(ids, on) => setManyBuilder("get", ids, on)} />
               </div>
 
               <textarea style={{ ...S.input, height: 70, resize: "vertical" }} placeholder="Add a message (optional)…" value={tradeMsg} onChange={e => setTradeMsg(e.target.value)} />
@@ -1685,24 +1756,17 @@ export default function StickerSwap() {
               ) : (
                 <div style={{ overflowY: "auto" }}>
                   <div style={{ fontSize: 13, color: "#2A9D5C", fontWeight: 700, marginBottom: 6 }}>You give ({counterGive.size}):</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>
-                    {(myGive || []).map(id => {
-                      const on = counterGive.has(id);
-                      return <div key={id} onClick={() => setCounterGive(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; })} style={{ cursor: "pointer", display: "flex", gap: 8, alignItems: "center", padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${on ? "#2A9D5C" : "#e2e8f0"}`, background: on ? "#2A9D5C12" : "#fff" }}>
-                        <span>{on ? "☑️" : "⬜"}</span><span style={{ color: "#94a3b8", fontWeight: 700, fontSize: 12, minWidth: 52 }}>{id}</span><span style={{ fontSize: 13 }}>{stickerLabel(id)}</span>
-                      </div>;
-                    })}
+                  <div style={{ marginBottom: 12 }}>
+                    <GroupedStickerSelect ids={counterPool.give} selected={counterGive} accent="#2A9D5C"
+                      onToggle={(id) => setCounterGive(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; })}
+                      onSetMany={(ids, on) => setManyCounter("give", ids, on)} />
                   </div>
                   <div style={{ fontSize: 13, color: "#E63946", fontWeight: 700, marginBottom: 6 }}>You get ({counterGet.size}):</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>
-                    {(myGet || []).map(id => {
-                      const on = counterGet.has(id);
-                      return <div key={id} onClick={() => setCounterGet(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; })} style={{ cursor: "pointer", display: "flex", gap: 8, alignItems: "center", padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${on ? "#E63946" : "#e2e8f0"}`, background: on ? "#E6394612" : "#fff" }}>
-                        <span>{on ? "☑️" : "⬜"}</span><span style={{ color: "#94a3b8", fontWeight: 700, fontSize: 12, minWidth: 52 }}>{id}</span><span style={{ fontSize: 13 }}>{stickerLabel(id)}</span>
-                      </div>;
-                    })}
+                  <div style={{ marginBottom: 12 }}>
+                    <GroupedStickerSelect ids={counterPool.get} selected={counterGet} accent="#E63946"
+                      onToggle={(id) => setCounterGet(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; })}
+                      onSetMany={(ids, on) => setManyCounter("get", ids, on)} />
                   </div>
-                  <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 10 }}>Note: you can only remove stickers from the current offer here. To add different ones, decline and propose a fresh trade.</div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <button style={{ ...S.btn(), border: "none", flex: 1 }} onClick={sendCounter}>Send counter-offer</button>
                     <button style={{ ...S.btn("ghost"), flex: 1 }} onClick={() => setCounterMode(false)}>Back</button>
