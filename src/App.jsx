@@ -1226,7 +1226,7 @@ export default function StickerSwap() {
                     {cell(2)}
                     {cell(11)}
                     {cell(12)}
-                    <div style={{ gridColumn: "6 / span 3" }}>{specialBox("TEAM PHOTO", "no." + selectedTeam + "13")}</div>
+                    <div style={{ gridColumn: "6 / span 3" }}>{byNum[13] ? <StickerCard sticker={byNum[13]} status={collection[byNum[13].id] || "need"} onToggle={cycleStatus} /> : <div />}</div>
                     {/* Row 2 */}
                     {cell(3)}
                     {cell(4)}
